@@ -7,7 +7,9 @@ $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
 
 New-Variable -Option Constant InterruptManagementPath 'Device Parameters\Interrupt Management'
 New-Variable -Option Constant MSIEnabledValueName 'MSISupported'
+New-Variable -Option Constant MSIPriorityValueName 'DevicePriority'
 New-Variable -Option Constant MSIPropertiesPath 'MessageSignaledInterruptProperties'
+New-Variable -Option Constant MSIPriorityPath 'Affinity Policy'
 New-Variable -Option Constant RootPath 'HKLM:\SYSTEM\CurrentControlSet\Enum\PCI'
 
 class Device {
@@ -53,13 +55,21 @@ foreach ($device in $devices) {
         try {
             $interruptManagementKey = Get-Item "$($deviceInstanceKey.PSPath)\$InterruptManagementPath"
             $msiPropertiesKey = $null;
+            $msiPriorityKey = $null;
             try {
                 $msiPropertiesKey = Get-Item "$($interruptManagementKey.PSPath)\$MSIPropertiesPath"
             } catch [System.Management.Automation.ItemNotFoundException] {
                 Write-Output "  No '$MSIPropertiesPath' key; creating it."
                 $msiPropertiesKey = New-Item "$($interruptManagementKey.PSPath)\$MSIPropertiesPath"
             }
+            try {
+                $msiPriorityKey = Get-Item "$($interruptManagementKey.PSPath)\$MSIPriorityPath"
+            } catch [System.Management.Automation.ItemNotFoundException] {
+                Write-Output "  No '$MSIPriorityPath' key; creating it."
+                $msiPriorityKey = New-Item "$($interruptManagementKey.PSPath)\$MSIPriorityPath"
+            }
             $msiEnabled = 0
+            $msiPriority = 0
             try {
                 $msiEnabled = (Get-ItemProperty $msiPropertiesKey.PSPath $MSIEnabledValueName).$MSIEnabledValueName
             } catch [System.Management.Automation.PSArgumentException] {}
@@ -67,7 +77,16 @@ foreach ($device in $devices) {
                 Write-Output '  MSI is currently disabled; turning it on.'
                 Set-ItemProperty $msiPropertiesKey.PSPath $MSIEnabledValueName 1
             } else {
-                Write-Output '  MSI is already enabled; skipping instance.'
+                Write-Output '  MSI is already enabled; skipping value.'
+            }
+            try {
+                $msiPriority = (Get-ItemProperty $msiPriorityKey.PSPath $MSIPriorityValueName).$MSIPriorityValueName
+            } catch [System.Management.Automation.PSArgumentException] {}
+            if ($msiPriority -ne 3) {
+                Write-Output '  MSI is not High Priority; changing value.'
+                Set-ItemProperty $msiPriorityKey.PSPath $MSIPriorityValueName 3
+            } else {
+                Write-Output '  MSI is High Priority; skipping value.'
             }
         } catch [System.Management.Automation.ItemNotFoundException] {
             Write-Output "  No '$InterruptManagementPath' key; skipping instance."
